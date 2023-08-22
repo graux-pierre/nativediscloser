@@ -37,6 +37,16 @@ class JNIProcedureBase(SimProcedure):
 
         return "".join(chars)
 
+    def load_unsolved_string_from_memory(self, addr):
+        solved_addr = self.state.solver.eval(addr)
+        chars = []
+        for i in itertools.count():
+            str_byte = self.state.memory.load(solved_addr+i, size=1)
+            if self.state.solver.eval(str_byte) == 0:
+                break
+            chars.append(str_byte)
+        return chars
+
     def set_class_field(self, class_name, field_name, value):
         return self.set_object_field("##class##"+class_name, field_name, value)
 

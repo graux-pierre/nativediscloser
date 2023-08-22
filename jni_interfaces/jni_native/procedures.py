@@ -2,25 +2,10 @@ import logging
 import archinfo
 from ..common import JNIProcedureBase as JPB
 from ..common import JNIEnvMissingError
-from ..record import Record
-
+from ..record import Record, JniNew
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
-
-class NewStringUTF(JPB):
-    def run(self, buff):
-        ret_symb = self.state.solver.BVS('jstring_from_buff', self.arch.bits)
-        return ret_symb
-
-class GetStringUTFChars(JPB):
-    def run(self, string, pIsCopy):
-        ret_symb = self.state.solver.BVS('buff_from_%s' % str(string), self.arch.bits)
-        return ret_symb
-
-class ReleaseStringUTFChars(JPB):
-    def run(self, string, pUtfChars):
-        return
 
 class GetArrayLength(JPB):
     def run(self, array):
@@ -104,6 +89,8 @@ class GetField(JPB):
     def is_static(self):
         return False
     def run(self, env, obj, field_ptr):
+        obj = obj.ast
+        field_ptr = field_ptr.ast
         record = self.get_current_record()
         field = self.get_ref(field_ptr)
         if field is None:
@@ -132,7 +119,7 @@ class GetField(JPB):
 class GetStaticField(GetField):
     def is_static(self):
         return True
-        
+
 class GetObjectField(GetField):
     pass
 
@@ -191,6 +178,9 @@ class SetField(JPB):
     def is_static(self):
         return False
     def run(self, env, obj, field_ptr, value):
+        obj = obj.ast
+        field_ptr = field_ptr.ast
+        value = value.ast
         record = self.get_current_record()
         field = self.get_ref(field_ptr)
         if field is None:
@@ -210,7 +200,7 @@ class SetField(JPB):
                     self.set_class_field("not_parsed", field.name, value)
                     return
                 self.set_class_field(cls.name, field.name, value)
-                
+
             record.add_set_field(self.is_static(), obj, cls.name, field.name, value, self.state.cond_hist)
 
 
@@ -274,7 +264,7 @@ class SetStaticDoubleField(SetStaticField):
 
 class GetObjectClass(JPB):
     def run(self, env, obj_ptr):
-        obj = self.get_ref(obj_ptr)
+        obj = self.get_ref(obj_ptr.ast)
         if obj is None:
             logger.warning(f"Object not parsed during JNI GetObjectClass function.")
             desc = 'jclass obtained via "GetObjectClass" and cannot be parsed'
@@ -285,9 +275,9 @@ class GetObjectClass(JPB):
 
 class GetMethodBase(JPB):
     def run(self, env, cls_ptr, method_name_ptr, sig_ptr):
-        cls = self.get_ref(cls_ptr)
-        method_name = self.load_string_from_memory(method_name_ptr)
-        signature = self.load_string_from_memory(sig_ptr)
+        cls = self.get_ref(cls_ptr.ast)
+        method_name = self.load_string_from_memory(method_name_ptr.ast)
+        signature = self.load_string_from_memory(sig_ptr.ast)
         return self.create_java_method_ID(cls, method_name,
                 signature, self.is_static())
 
@@ -307,9 +297,9 @@ class GetMethodID(GetMethodBase):
 
 class GetFieldID(JPB):
     def run(self, env_ptr, cls_ptr, field_name_ptr, sig_ptr):
-        cls = self.get_ref(cls_ptr)
-        name = self.load_string_from_memory(field_name_ptr)
-        signature = self.load_string_from_memory(sig_ptr)
+        cls = self.get_ref(cls_ptr.ast)
+        name = self.load_string_from_memory(field_name_ptr.ast)
+        signature = self.load_string_from_memory(sig_ptr.ast)
         return self.create_java_field_ID(cls, name, signature)
 
 
@@ -320,7 +310,7 @@ class GetStaticFieldID(GetFieldID):
 class CallMethodBase(JPB):
     def run(self, env, _, method_ptr):
         logger.debug(f'{self.__class__.__name__} SimP at {hex(self.state.addr)} is invoked')
-        method = self.get_ref(method_ptr)
+        method = self.get_ref(method_ptr.ast)
         record = self.get_current_record()
         return_value = self.get_return_value(method)
         # record could be None when CallMethod function called in JNI_OnLoad
@@ -701,9 +691,9 @@ class RegisterNatives(JPB):
         # via customized structures). Use exception catching to avoid the program
         # from crashing.
         try:
-            cls_name = self.get_ref(cls_ptr).name
-            num = self.state.solver.eval(method_num)
-            methods_ptr = self.state.solver.eval(methods)
+            cls_name = self.get_ref(cls_ptr.ast).name
+            num = self.state.solver.eval(method_num.ast)
+            methods_ptr = self.state.solver.eval(methods.ast)
             for i in range(num):
                 ptr = methods_ptr + i * 3 * self.arch.bits // 8
                 method = self.state.mem[ptr].struct.JNINativeMethod
@@ -815,4 +805,74 @@ class RegisterNatives(JPB):
         return cls_name, method_name, signature, is_static_method, obfuscated
 
 
+class GetStringChars(JPB):
+    def run(self, env, jstr, isCopy):
+        from ..utils import MAX_ARRAY_SIZE # Avoid circular inclusions
 
+        # fill with ##array##idx1 ##array##idx2 ##array##idx3 ##array##idx4
+        str_from = jstr.ast.args[0].split('_')[0]
+
+        ref = self.state.heap.allocate(MAX_ARRAY_SIZE)
+        symb = self.state.solver.BVS("$$string$$"+str_from, self.arch.bits)
+        self.state.globals[str(symb)] = (ref, MAX_ARRAY_SIZE, jstr.ast)
+        self.state.add_constraints(symb == ref)
+
+        for i in range(MAX_ARRAY_SIZE):
+            self.state.mem[ref + i].uint8_t = self.state.solver.BVS(f"$$string$${str_from}$${i}", 8)
+
+        return symb
+
+class GetStringUTFChars(GetStringChars):
+    pass
+
+class GetStringLength(JPB):
+    def run(self, env, jstr):
+        from ..utils import MAX_ARRAY_SIZE # Avoid circular inclusions
+
+        str_from = jstr.ast.args[0].split('_')[0]
+        symb = self.state.solver.BVS("$$string_length$$"+str_from, self.arch.bits)
+        self.state.add_constraints(symb <= MAX_ARRAY_SIZE)
+
+        return symb
+
+class GetStringUTFLength(GetStringLength):
+    pass
+
+class GetStringRegion(JPB):
+    def run(self, env, jstr, jstart, jlen, out):
+        str_from = jstr.ast.args[0].split('_')[0]
+        start = self.state.solver.eval(jstart)
+        copy_len = self.state.solver.eval(jlen)
+        addr = self.state.solver.eval(out)
+
+        for i in range(copy_len):
+            self.state.mem[addr + i].uint8_t = self.state.solver.BVS(f"$$string$${str_from}$${start+i}", 8)
+
+class GetStringUTFRegion(GetStringRegion):
+    pass
+
+class ReleaseStringChars(JPB):
+    def run(self, env, jstr, chars):
+        pass
+
+class ReleaseStringUTFChars(ReleaseStringChars):
+    pass
+
+class NewString(JPB):
+    def run(self, env, juchars, jlen):
+        record = self.get_current_record()
+        plen = self.state.solver.eval(jlen)
+        symb = self.state.solver.BVS("##new##", self.arch.bits)
+
+        record.add_jni_new(symb.args[0], JniNew.NEW_STRING, [self.state.mem[juchars+i].uint8_t for i in range(plen)], self.state.cond_hist)
+
+        return symb
+
+class NewStringUTF(NewString):
+    def run(self, env, bytes_addr):
+        record = self.get_current_record()
+        symb = self.state.solver.BVS("##new##", self.arch.bits)
+
+        record.add_jni_new(symb.args[0], JniNew.NEW_STRING, self.load_unsolved_string_from_memory(bytes_addr), self.state.cond_hist)
+
+        return symb
