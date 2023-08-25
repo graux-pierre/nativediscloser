@@ -93,15 +93,16 @@ class JniNew:
     NEW_ARRAY = 1
     NEW_STRING = 2
 
-    def __init__(self, created_symb, new_type, param_expr_list, guard_condition):
+    def __init__(self, created_symb, new_type, created_type, param_expr_list, guard_condition):
         self.created_symb = created_symb
+        self.created_type = created_type
         self.new_type = new_type
         self.param_expr_list = param_expr_list
         self.guard_condition = guard_condition
 
     def __str__(self):
-        s = f'{self.created_symb}, {self.new_type}, '
-        s +=  "\"" + ", ".join([get_str_from_symb_expr(expr) for expr in self.param_expr_list]) + "\", "
+        s = f'{self.created_symb}, {self.new_type}, {self.created_type}, '
+        s += "\"" + ", ".join([get_str_from_symb_expr(expr) for expr in self.param_expr_list]) + "\""
         s += f', {self.guard_condition.bits}, {self.guard_condition.n_bits}, '
         s += "\"" + ", ".join([get_str_from_symb_expr(expr) for expr in self.guard_condition.cond]) + "\""
 
@@ -193,12 +194,12 @@ class Record:
             self._set_fields = list()
         self._set_fields.append(set_field)
 
-    def add_jni_new(self, param, new_type=None, param_expr_list=None, guard_condition=None):
+    def add_jni_new(self, param, created_type=None, new_type=None, param_expr_list=None, guard_condition=None):
         jni_new = None
         if isinstance(param, JniNew):
             jni_new = param
         else:
-            jni_new = JniNew(param, new_type, param_expr_list, guard_condition)
+            jni_new = JniNew(param, created_type, new_type, param_expr_list, guard_condition)
         if self._jni_news is None:
             self._jni_news = list()
         self._jni_news.append(jni_new)

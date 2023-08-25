@@ -351,7 +351,7 @@ def print_records(fname=None):
                         'is_static, obj_ptr, classname, field_name, new_value, ' +\
                         'condition_bits, condition_n_bits, condition_expr'
     header_jni_new = '# 5, invoker_cls, invoker_method, invoker_signature, invoker_symbol, invoker_static_export, ' +\
-                     'created_symb, new_type, param_expr_list' +\
+                     'created_symb, new_type, created_type, param_expr_list' +\
                      'condition_bits, condition_n_bits, condition_expr\n' +\
                      '# new_type = 0 for object, 1 for arrays, 2 for strings'
     if len(Record.RECORDS) > 0:
