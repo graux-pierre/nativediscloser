@@ -864,7 +864,7 @@ class NewString(JPB):
         plen = self.state.solver.eval(jlen)
         symb = self.state.solver.BVS("##new##", self.arch.bits)
 
-        record.add_jni_new(symb.args[0], JniNew.NEW_STRING, "java.lang.String", [self.state.mem[juchars+i].uint8_t for i in range(plen)], self.state.cond_hist)
+        record.add_jni_new(symb.args[0], JniNew.NEW_STRING, "java.lang.String", [self.state.mem[juchars+i].uint8_t.resolved for i in range(plen)], self.state.cond_hist)
 
         return symb
 

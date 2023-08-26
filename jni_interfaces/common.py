@@ -42,8 +42,10 @@ class JNIProcedureBase(SimProcedure):
         chars = []
         for i in itertools.count():
             str_byte = self.state.memory.load(solved_addr+i, size=1)
-            if self.state.solver.eval(str_byte) == 0:
-                break
+            sols = self.state.solver.eval_upto(str_byte, 2)
+            if len(sols) == 1:
+                if sols[0] == 0:
+                    break
             chars.append(str_byte)
         return chars
 
