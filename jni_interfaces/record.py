@@ -89,10 +89,6 @@ class SetField:
         return s
 
 class JniNew:
-    NEW_OBJECT = 0
-    NEW_ARRAY = 1
-    NEW_STRING = 2
-
     def __init__(self, created_symb, new_type, created_type, param_expr_list, guard_condition):
         self.created_symb = created_symb
         self.created_type = created_type
@@ -108,7 +104,25 @@ class JniNew:
 
         return s
 
+class JniLength:
+    def __init__(self, created_symb, length_type, object_expr, guard_condition):
+        self.created_symb = created_symb
+        self.length_type = length_type
+        self.object_expr = object_expr
+        self.guard_condition = guard_condition
+
+    def __str__(self):
+        s = f'{self.created_symb}, {self.length_type}, {get_str_from_symb_expr(self.object_expr)}, '
+        s += f'{self.guard_condition.bits}, {self.guard_condition.n_bits}, '
+        s += "\"" + ", ".join([get_str_from_symb_expr(expr) for expr in self.guard_condition.cond]) + "\""
+
+        return s
+
 class Record:
+    TYPE_OBJECT = 0
+    TYPE_ARRAY = 1
+    TYPE_STRING = 2
+
     # global records, indexed by the address of corresponding JNI function pointer
     RECORDS = dict()
 
@@ -127,6 +141,7 @@ class Record:
         self._get_fields = None # list of field get by the current native method
         self._set_fields = None # list of field set by the current native method
         self._jni_news = None # list of news made by the current native method
+        self._jni_lengths = None # list of lengths get by the current native method
         Record.RECORDS.update({func_ptr: self}) # add itself to global record
 
     def add_elem(self, elem):
@@ -140,6 +155,8 @@ class Record:
             self.add_set_field(elem)
         elif isinstance(elem, JniNew):
             self.add_jni_new(elem)
+        elif isinstance(elem, JniLength):
+            self.add_jni_length(elem)
         else:
             raise TypeError("Invalid type for elem")
         
@@ -204,6 +221,17 @@ class Record:
             self._jni_news = list()
         self._jni_news.append(jni_new)
 
+    def add_jni_length(self, param, length_type=None, object_expr=None, guard_condition=None):
+        jni_length = None
+        if isinstance(param, JniLength):
+            jni_length = param
+        else:
+            jni_length = JniLength(param, length_type, object_expr, guard_condition)
+
+        if self._jni_lengths is None:
+            self._jni_lengths = list()
+        self._jni_lengths.append(jni_length)
+
     def is_invoker(self):
         return self._invokees is not None
 
@@ -228,6 +256,9 @@ class Record:
     def get_jni_news(self):
         return self._jni_news
 
+    def get_jni_lengths(self):
+        return self._jni_lengths
+
     def __str__(self):
         result = ''
         invoker = f'{self.cls}, {self.method_name}, {self.signature}, {self.symbol_name}, {self.static_export}'
@@ -248,6 +279,9 @@ class Record:
         if self._jni_news is not None:
             for jni_new in self._jni_news:
                 result += '5, ' + invoker + ', ' + str(jni_new) + '\n'
+        if self._jni_lengths is not None:
+            for jni_length in self._jni_lengths:
+                result += '6, ' + invoker + ', ' + str(jni_length) + '\n'
 
         return result.strip()
 

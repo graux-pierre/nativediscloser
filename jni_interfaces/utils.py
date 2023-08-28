@@ -196,6 +196,7 @@ def analyze_jni_function(func_addr, proj, jvm_ptr, jenv_ptr, cfg, dex=None, retu
         get_fields = Record.RECORDS.get(func_addr).get_get_fields()
         set_fields = Record.RECORDS.get(func_addr).get_set_fields()
         jni_news = Record.RECORDS.get(func_addr).get_jni_news()
+        jni_lengths = Record.RECORDS.get(func_addr).get_jni_lengths()
         if invokees is None:
             invokees = []
         if return_values is None:
@@ -206,7 +207,9 @@ def analyze_jni_function(func_addr, proj, jvm_ptr, jenv_ptr, cfg, dex=None, retu
             set_fields = []
         if jni_news is None:
             jni_news = []
-        returns.update({func_addr: invokees+return_values+get_fields+set_fields+jni_news})
+        if jni_lengths is None:
+            jni_lengths = []
+        returns.update({func_addr: invokees+return_values+get_fields+set_fields+jni_news+jni_lengths})
 
 
 def get_jni_function_params(proj, func_addr, jenv_ptr):
@@ -351,9 +354,12 @@ def print_records(fname=None):
                         'is_static, obj_ptr, classname, field_name, new_value, ' +\
                         'condition_bits, condition_n_bits, condition_expr'
     header_jni_new = '# 5, invoker_cls, invoker_method, invoker_signature, invoker_symbol, invoker_static_export, ' +\
-                     'created_symb, new_type, created_type, param_expr_list' +\
+                     'created_symb, new_type, created_type, param_expr_list,' +\
+                     'condition_bits, condition_n_bits, condition_expr'
+    header_jni_length = '# 6, invoker_cls, invoker_method, invoker_signature, invoker_symbol, invoker_static_export, ' +\
+                     'created_symb, length_type, object_expr,' +\
                      'condition_bits, condition_n_bits, condition_expr\n' +\
-                     '# new_type = 0 for object, 1 for arrays, 2 for strings'
+                     '# (new|length)_type = 0 for object, 1 for arrays, 2 for strings'
     if len(Record.RECORDS) > 0:
         f = None
         if fname is None:
@@ -366,6 +372,7 @@ def print_records(fname=None):
         print(header_get_field, file=f)
         print(header_set_field, file=f)
         print(header_jni_new, file=f)
+        print(header_jni_length, file=f)
         for _, r in Record.RECORDS.items():
             print(r, file=f)
         if fname is not None:

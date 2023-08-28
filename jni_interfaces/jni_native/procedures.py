@@ -2,7 +2,7 @@ import logging
 import archinfo
 from ..common import JNIProcedureBase as JPB
 from ..common import JNIEnvMissingError
-from ..record import Record, JniNew
+from ..record import Record
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -829,9 +829,13 @@ class GetStringLength(JPB):
     def run(self, env, jstr):
         from ..utils import MAX_ARRAY_SIZE # Avoid circular inclusions
 
+        record = self.get_current_record()
         str_from = jstr.ast.args[0].split('_')[0]
         symb = self.state.solver.BVS("$$string_length$$"+str_from, self.arch.bits)
         self.state.add_constraints(symb <= MAX_ARRAY_SIZE)
+        self.state.add_constraints(symb >= 0)
+
+        record.add_jni_length(symb.args[0], Record.TYPE_STRING, jstr.ast, self.state.cond_hist)
 
         return symb
 
@@ -864,7 +868,7 @@ class NewString(JPB):
         plen = self.state.solver.eval(jlen)
         symb = self.state.solver.BVS("##new##", self.arch.bits)
 
-        record.add_jni_new(symb.args[0], JniNew.NEW_STRING, "java.lang.String", [self.state.mem[juchars+i].uint8_t.resolved for i in range(plen)], self.state.cond_hist)
+        record.add_jni_new(symb.args[0], Record.TYPE_STRING, "java.lang.String", [self.state.mem[juchars+i].uint8_t.resolved for i in range(plen)], self.state.cond_hist)
 
         return symb
 
@@ -873,6 +877,6 @@ class NewStringUTF(NewString):
         record = self.get_current_record()
         symb = self.state.solver.BVS("##new##", self.arch.bits)
 
-        record.add_jni_new(symb.args[0], JniNew.NEW_STRING, "java.lang.String", self.load_unsolved_string_from_memory(bytes_addr), self.state.cond_hist)
+        record.add_jni_new(symb.args[0], Record.TYPE_STRING, "java.lang.String", self.load_unsolved_string_from_memory(bytes_addr), self.state.cond_hist)
 
         return symb
